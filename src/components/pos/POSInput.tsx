@@ -159,7 +159,7 @@ export function POSInput({ onLogout }: { onLogout: () => void }) {
                 className={`cursor-pointer hover:border-primary hover:shadow-xl transition-all duration-300 overflow-hidden group
                   ${isAntiGravity ? 'animate-float opacity-90' : ''}`}
                 style={isAntiGravity ? { animationDelay: `${Math.random() * 2}s`, animationDuration: `${3 + Math.random() * 2}s` } : {}}
-                onClick={() => addItem(product)}
+                onClick={() => addItem(product as any)}
               >
                 <CardContent className="p-0 flex justify-center items-center h-40 bg-muted/30 text-6xl group-hover:scale-110 transition-transform relative">
                   {product.image}
