@@ -22,11 +22,24 @@ export type Notification = {
   isUnread: boolean;
 };
 
+export type UserData = {
+  fullName: string;
+  contact: string;
+  password?: string;
+};
+
 interface CartState {
   items: CartItem[];
   isZakatEnabled: boolean;
   isCartOpen: boolean;
   notifications: Notification[];
+  
+  // Auth state
+  users: UserData[];
+  currentUser: UserData | null;
+  registerUser: (userData: UserData) => void;
+  loginUser: (contact: string, password?: string) => boolean;
+  logoutUser: () => void;
   
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
@@ -38,7 +51,6 @@ interface CartState {
   markNotificationsAsRead: () => void;
   getTotals: () => { subtotal: number; zakat: number; total: number };
 }
-
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   isZakatEnabled: false,
@@ -46,6 +58,24 @@ export const useCartStore = create<CartState>((set, get) => ({
   notifications: [
     { id: 'initial-1', title: 'Promo Spesial PAT MART!', message: 'Diskon 50% untuk seri DIMOO Retro.', time: '1 jam yang lalu', isUnread: true }
   ],
+  
+  users: [],
+  currentUser: null,
+
+  registerUser: (userData) => set((state) => ({ users: [...state.users, userData] })),
+  
+  loginUser: (contact, password) => {
+    const { users } = get();
+    // basic validation - either contact matches and (pw matches or pw not provided for mockup)
+    const user = users.find(u => u.contact === contact && (!password || u.password === password));
+    if (user) {
+      set({ currentUser: user });
+      return true;
+    }
+    return false;
+  },
+  
+  logoutUser: () => set({ currentUser: null }),
   
   addItem: (product) => set((state) => {
     const existingItem = state.items.find(item => item.id === product.id);

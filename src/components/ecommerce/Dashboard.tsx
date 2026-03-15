@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useCartStore, Product } from "@/store/cart";
-import { Search, ShoppingCart, Bell, User, MapPin, Star, Rocket, Plus, Minus, HeartHandshake, X, CreditCard, Wallet, Banknote, Truck, QrCode, Clock, CheckCircle2 } from "lucide-react";
+import { Search, ShoppingCart, Bell, User, MapPin, Star, Rocket, Plus, Minus, HeartHandshake, X, CreditCard, Wallet, Banknote, Truck, QrCode, Clock, CheckCircle2, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useEffect } from "react";
 
-// Mock Tokopedia/Pop Mart Products
+// Expanded Tokopedia/Pop Mart Products Catalog
 const products = [
   { id: "1", name: "MEGA SPACE MOLLY 1000% Patrick Star", price: 1250.00, image: "🌟", store: "Pop Mart Official", rating: 4.9, sold: 124 },
   { id: "2", name: "DIMOO Retro Series Blind Box", price: 15.50, image: "👾", store: "Toys Kingdom", rating: 4.8, sold: 2150 },
@@ -18,9 +18,14 @@ const products = [
   { id: "6", name: "Sweet Bean x Glico Pocky Series", price: 14.00, image: "🍫", store: "Sweet Treats ID", rating: 4.6, sold: 310 },
   { id: "7", name: "CRYBABY Sad Club Series", price: 17.50, image: "💧", store: "Pop Mart Official", rating: 4.9, sold: 1620 },
   { id: "8", name: "Zsiga We're So Cute Series", price: 15.00, image: "🐾", store: "Toys Kingdom", rating: 4.8, sold: 540 },
+  // New Additions
+  { id: "9", name: "Hirono × Chucky Figurine", price: 149.99, image: "🔪", store: "Pop Mart Official", rating: 5.0, sold: 610 },
+  { id: "10", name: "KUBO The Joker Figurine", price: 129.99, image: "🃏", store: "Collectopia", rating: 4.9, sold: 320 },
+  { id: "11", name: "CRYBABY Cheer Up, Baby! Series", price: 16.99, image: "🎀", store: "Pop Mart Official", rating: 4.8, sold: 2040 },
+  { id: "12", name: "Hirono Road Journal Series-Plush Doll", price: 36.99, image: "🧸", store: "Pop Mart Official", rating: 4.7, sold: 890 },
 ];
 
-export function Dashboard({ onLogout }: { onLogout: () => void }) {
+export function Dashboard({ onLogout, onProfileClick }: { onLogout: () => void, onProfileClick: () => void }) {
   const { items, addItem, decrementItem, isZakatEnabled, toggleZakat, isCartOpen, toggleCart, getTotals, clearCart, notifications, addNotification, markNotificationsAsRead } = useCartStore();
   const [isAntiGravity, setIsAntiGravity] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -30,8 +35,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Semua");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [sortBy, setSortBy] = useState("recommend"); // 'recommend', 'price_asc', 'price_desc', 'rating', 'sold'
 
-  // Checkout Modal & Notification States
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutData, setCheckoutData] = useState<{method: string; amount: number; isDirect: boolean; directProduct?: any}>({method: 'qris', amount: 0, isDirect: false});
   const [vaTimer, setVaTimer] = useState(180);
@@ -39,6 +44,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [vaNumber, setVaNumber] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [receiptData, setReceiptData] = useState<any>(null);
 
   // Timer effect for VA
   useEffect(() => {
@@ -52,11 +59,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     return () => clearInterval(interval);
   }, [isCheckoutOpen, checkoutData.method, isProcessing, vaTimer, addNotification]);
 
-  // Filter products based on search and category
+  // Filter and Sort products
   const filteredProducts = products.filter(product => {
     const matchesCategory = selectedCategory === "Semua" || product.name.includes(selectedCategory);
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.store.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
+  }).sort((a, b) => {
+    if (sortBy === 'price_asc') return a.price - b.price;
+    if (sortBy === 'price_desc') return b.price - a.price;
+    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'sold') return b.sold - a.sold;
+    return 0; // default/recommend
   });
 
   // Calculate total cart items badge
@@ -93,9 +106,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleBuyNow = () => {
     if (selectedProduct) {
-      const total = selectedProduct.price * modalQuantity;
-      const zakat = isZakatEnabled ? total * 0.025 : 0;
-      startCheckout(paymentMethod, total + zakat, true, { ...selectedProduct, quantity: modalQuantity });
+      // Clear cart and add only this item to force direct checkout via cart sidebar
+      clearCart();
+      for (let i = 0; i < modalQuantity; i++) {
+        addItem(selectedProduct);
+      }
+      setIsModalOpen(false);
+      if (!isCartOpen) toggleCart();
     }
   };
 
@@ -109,10 +126,23 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setTimeout(() => {
       setIsProcessing(false);
       setIsCheckoutOpen(false);
+      
+      const purchasedItems = checkoutData.isDirect ? [checkoutData.directProduct] : [...items];
+      
+      setReceiptData({
+        orderId: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+        date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase(),
+        method: checkoutData.method.toUpperCase(),
+        amount: checkoutData.amount,
+        items: purchasedItems
+      });
+      setIsReceiptOpen(true);
+
       addNotification({
         title: "Pembayaran Berhasil!",
         message: `Pesanan Anda senilai $${checkoutData.amount.toFixed(2)} sedang diproses. Lacak resi di menu pesanan.`
       });
+      
       if (!checkoutData.isDirect) {
         clearCart();
       }
@@ -235,11 +265,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </div>
             <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
-            <div className="flex items-center gap-3 cursor-pointer group hover:bg-gray-50 p-1.5 rounded-xl transition-colors">
-              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[#222222] group-hover:bg-[#FF0000] group-hover:text-white transition-colors">
+            <div className="flex items-center gap-3 cursor-pointer group hover:bg-gray-50 p-1.5 rounded-xl transition-colors" onClick={onProfileClick}>
+              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[#222222] group-hover:bg-[#FF0000] group-hover:text-white transition-colors border border-gray-200">
                 <User size={18} />
               </div>
-              <span onClick={onLogout} className="text-sm font-bold text-gray-600 group-hover:text-[#FF0000] hidden md:block">Keluar</span>
+              <span className="text-sm font-bold text-gray-600 group-hover:text-[#FF0000] hidden md:block">Profil</span>
+            </div>
+            <div className="flex items-center gap-3 cursor-pointer group hover:bg-gray-50 p-1.5 rounded-xl transition-colors" onClick={onLogout}>
+              <span className="text-xs font-bold text-gray-400 group-hover:text-[#FF0000] hidden md:block uppercase tracking-widest">Keluar</span>
             </div>
           </div>
         </div>
@@ -253,7 +286,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 sticky top-24">
             <h3 className="font-black text-[#222222] uppercase tracking-tighter italic mb-4">Kategori</h3>
             <div className="space-y-2">
-              {["Semua", "MEGA SPACE MOLLY", "DIMOO", "Hirono", "SKULLPANDA"].map(cat => (
+              {["Semua", "MEGA SPACE MOLLY", "DIMOO", "Hirono", "SKULLPANDA", "KUBO", "CRYBABY"].map(cat => (
                 <button 
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
@@ -281,10 +314,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
              <div className="hidden md:block absolute right-10 bottom-0 text-[12rem] leading-none opacity-20 filter drop-shadow-2xl translate-y-8">🌟</div>
           </div>
 
-        {/* Product Grid */}
+        {/* Product Grid Header */}
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-black text-[#222222] uppercase tracking-tighter italic">Spesial Untukmu</h3>
-          {searchQuery && <Badge className="bg-gray-100 text-[#222222] hover:bg-gray-200">Menampilkan hasil: "{searchQuery}"</Badge>}
+          <div className="flex items-center gap-3">
+             <h3 className="text-2xl font-black text-[#222222] uppercase tracking-tighter italic">Spesial Untukmu</h3>
+             {searchQuery && <Badge className="bg-gray-100 text-[#222222] hover:bg-gray-200">"{searchQuery}"</Badge>}
+          </div>
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal size={14} className="text-gray-400" />
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-transparent text-xs font-bold text-gray-500 focus:outline-none cursor-pointer p-1"
+            >
+              <option value="recommend">Rekomendasi</option>
+              <option value="price_asc">Harga Termurah</option>
+              <option value="price_desc">Harga Termahal</option>
+              <option value="rating">Rating Tertinggi</option>
+              <option value="sold">Produk Terjual</option>
+            </select>
+          </div>
         </div>
         
         {filteredProducts.length === 0 ? (
@@ -659,6 +708,95 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </>
               )}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Modal (Printable) */}
+      <Dialog open={isReceiptOpen} onOpenChange={setIsReceiptOpen}>
+        <DialogContent className="sm:max-w-[400px] p-0 bg-transparent border-none shadow-none print:max-w-full print:shadow-none print:m-0 print:p-0">
+          <div className="bg-[#f4f4f4] bg-[url('https://www.transparenttextures.com/patterns/crumpled-paper.png')] p-8 rounded-sm shadow-2xl mx-auto w-full max-w-[360px] relative font-mono text-[#222] min-h-[500px] print:w-full print:max-w-full print:min-h-screen print:rounded-none">
+            
+            {/* Print Only Styles */}
+            <style dangerouslySetInnerHTML={{__html: `
+              @media print {
+                body * { visibility: hidden; }
+                .print-section, .print-section * { visibility: visible; }
+                .print-section { position: absolute; left: 0; top: 0; width: 100%; }
+                .no-print { display: none !important; }
+              }
+            `}} />
+
+            <div className="print-section">
+              <div className="text-center mb-6">
+                <h1 className="text-3xl font-black tracking-widest leading-none mb-1">PAT MART</h1>
+                <h2 className="text-lg font-bold tracking-[0.2em] mb-4">RECEIPTIFY</h2>
+                <div className="text-xs font-bold uppercase tracking-widest">LAST MONTH</div>
+              </div>
+
+              {receiptData && (
+                <>
+                  <div className="text-[10px] uppercase mb-4 leading-tight font-bold">
+                    <div>ORDER {receiptData.orderId} FOR {useCartStore.getState().currentUser?.fullName || 'GUEST'}</div>
+                    <div>{receiptData.date}</div>
+                  </div>
+
+                  <div className="border-y-2 border-dashed border-[#222] py-2 mb-4">
+                    <div className="flex justify-between text-[10px] font-bold mb-2 uppercase">
+                      <span className="w-8">QTY</span>
+                      <span className="flex-1">ITEM</span>
+                      <span className="w-12 text-right">AMT</span>
+                    </div>
+
+                    {receiptData.items.map((item: any, i: number) => (
+                      <div key={i} className="flex justify-between text-[10px] font-bold mb-3 uppercase leading-tight">
+                        <span className="w-8">{String(item.quantity || 1).padStart(2, '0')}</span>
+                        <span className="flex-1 pr-2">{item.name}</span>
+                        <span className="w-12 text-right">${(item.price * (item.quantity || 1)).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-b-2 border-dashed border-[#222] pb-2 mb-4">
+                    <div className="flex justify-between text-[10px] font-bold uppercase mb-1">
+                      <span>ITEM COUNT:</span>
+                      <span>{receiptData.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-black uppercase">
+                      <span>TOTAL:</span>
+                      <span>${receiptData.amount.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] font-bold uppercase leading-tight mb-6">
+                    <div>CARD #: **** **** **** 2026</div>
+                    <div>AUTH CODE: {Math.floor(100000 + Math.random() * 900000)}</div>
+                    <div>CARDHOLDER: {useCartStore.getState().currentUser?.fullName || 'GUEST'}</div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-widest mb-4">THANK YOU FOR VISITING!</div>
+                    {/* Mock Barcode */}
+                    <div className="flex justify-center mb-1">
+                      {Array.from({ length: 48 }).map((_, i) => (
+                        <div key={i} className={`h-12 bg-[#222] ${Math.random() > 0.5 ? 'w-1' : 'w-0.5'} mx-[0.5px]`}></div>
+                      ))}
+                    </div>
+                    <div className="text-[8px] tracking-[0.3em] font-bold">patmart.com</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Actions for Web View */}
+            <div className="absolute -right-16 top-0 flex flex-col gap-2 no-print">
+              <button onClick={() => setIsReceiptOpen(false)} className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#222] hover:bg-gray-100 shadow-xl border border-gray-200"><X size={20} /></button>
+              <button onClick={() => window.print()} className="w-12 h-12 bg-[#222] rounded-full flex items-center justify-center text-white hover:bg-[#FF0000] shadow-xl transition-colors"><Truck size={20} /></button>
+            </div>
+            {/* Hint text bottom absolute */}
+            <div className="absolute -bottom-10 left-0 w-full text-center text-white text-xs font-bold no-print filter drop-shadow-md">
+              Klik icon mobil untuk Cetak Resi
+            </div>
           </div>
         </DialogContent>
       </Dialog>

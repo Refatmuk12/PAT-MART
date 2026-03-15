@@ -2,9 +2,29 @@
 
 import React, { useState } from 'react';
 import { QrCode, Mail, Lock, LogIn, ChevronRight, X } from 'lucide-react';
+import { useCartStore } from '@/store/cart';
 
 export function Login({ onRegisterClick, onLoginSuccess }: { onRegisterClick?: () => void, onLoginSuccess?: () => void }) {
   const [antiGravity, setAntiGravity] = useState(false);
+  const [contact, setContact] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const loginUser = useCartStore(state => state.loginUser);
+
+  const handleLoginSubmit = () => {
+    setErrorMsg('');
+    if (!contact.trim() || !password.trim()) {
+      setErrorMsg('Mohon isi Nomor HP/Email dan Kata Sandi.');
+      return;
+    }
+    
+    const success = loginUser(contact, password);
+    if (success) {
+      if (onLoginSuccess) onLoginSuccess();
+    } else {
+      setErrorMsg('Akun tidak ditemukan atau kata sandi salah. Silakan daftar terlebih dahulu.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#FCF8F8] font-['Helvetica'] flex items-center justify-center p-6 relative overflow-hidden">
@@ -23,15 +43,31 @@ export function Login({ onRegisterClick, onLoginSuccess }: { onRegisterClick?: (
         </div>
 
         <div className="space-y-6">
+          {errorMsg && (
+            <div className="p-3 bg-red-50 text-[#FF0000] text-xs font-bold rounded-xl border border-red-100 text-center">
+              {errorMsg}
+            </div>
+          )}
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Nomor HP atau Email</label>
-              <input type="text" className="w-full px-6 py-4 bg-gray-50 border-2 border-transparent focus:border-[#FF0000] rounded-2xl outline-none transition-all font-medium" />
+              <input 
+                type="text" 
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                className="w-full px-6 py-4 bg-gray-50 border-2 border-transparent focus:border-[#FF0000] rounded-2xl outline-none transition-all font-medium" 
+              />
             </div>
             
             <div className="space-y-1">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Kata Sandi</label>
-              <input type="password" placeholder="Masukkan kata sandi..." className="w-full px-6 py-4 bg-gray-50 border-2 border-transparent focus:border-[#FF0000] rounded-2xl outline-none transition-all font-medium" />
+              <input 
+                type="password" 
+                placeholder="Masukkan kata sandi..." 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-6 py-4 bg-gray-50 border-2 border-transparent focus:border-[#FF0000] rounded-2xl outline-none transition-all font-medium" 
+              />
             </div>
           </div>
 
@@ -39,7 +75,7 @@ export function Login({ onRegisterClick, onLoginSuccess }: { onRegisterClick?: (
             <span className="text-xs font-black text-[#FF0000] uppercase tracking-tighter cursor-pointer hover:underline">Lupa kata sandi?</span>
           </div>
 
-          <button onClick={onLoginSuccess} className="w-full bg-[#222222] text-white py-5 rounded-3xl font-black text-lg uppercase tracking-tighter hover:bg-[#FF0000] transform active:scale-95 transition-all shadow-xl">
+          <button onClick={handleLoginSubmit} className="w-full bg-[#222222] text-white py-5 rounded-3xl font-black text-lg uppercase tracking-tighter hover:bg-[#FF0000] transform active:scale-95 transition-all shadow-xl">
             SELANJUTNYA
           </button>
 

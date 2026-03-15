@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Apple } from "lucide-react";
+import { useCartStore } from "@/store/cart";
 
 export function Register({ onLoginClick }: { onLoginClick: () => void }) {
+  const registerUser = useCartStore(state => state.registerUser);
   const [formData, setFormData] = useState({
     fullName: "",
     contact: "",
@@ -38,6 +40,11 @@ export function Register({ onLoginClick }: { onLoginClick: () => void }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
+      registerUser({
+        fullName: formData.fullName,
+        contact: formData.contact,
+        password: formData.password
+      });
       alert("Registration successful! Welcome to PAT MART.");
       onLoginClick();
     }
