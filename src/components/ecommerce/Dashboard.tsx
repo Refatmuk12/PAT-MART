@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useCartStore, Product } from "@/store/cart";
-import { Search, ShoppingCart, Bell, User, MapPin, Star, Rocket, Plus, Minus, HeartHandshake, X, CreditCard, Wallet, Banknote, Truck, QrCode } from "lucide-react";
+import { Search, ShoppingCart, Bell, User, MapPin, Star, Rocket, Plus, Minus, HeartHandshake, X, CreditCard, Wallet, Banknote, Truck, QrCode, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useEffect } from "react";
 
 // Mock Tokopedia/Pop Mart Products
 const products = [
@@ -20,12 +21,43 @@ const products = [
 ];
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
-  const { items, addItem, decrementItem, isZakatEnabled, toggleZakat, isCartOpen, toggleCart, getTotals, clearCart } = useCartStore();
+  const { items, addItem, decrementItem, isZakatEnabled, toggleZakat, isCartOpen, toggleCart, getTotals, clearCart, notifications, addNotification, markNotificationsAsRead } = useCartStore();
   const [isAntiGravity, setIsAntiGravity] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [modalQuantity, setModalQuantity] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("qris");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Semua");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Checkout Modal & Notification States
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutData, setCheckoutData] = useState<{method: string; amount: number; isDirect: boolean; directProduct?: any}>({method: 'qris', amount: 0, isDirect: false});
+  const [vaTimer, setVaTimer] = useState(180);
+  const [selectedBank, setSelectedBank] = useState("BCA");
+  const [vaNumber, setVaNumber] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Timer effect for VA
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isCheckoutOpen && checkoutData.method === 'transfer' && !isProcessing && vaTimer > 0) {
+      interval = setInterval(() => setVaTimer((prev) => prev - 1), 1000);
+    } else if (isCheckoutOpen && vaTimer === 0 && !isProcessing) {
+      setIsCheckoutOpen(false);
+      addNotification({ title: "Pembayaran Gagal", message: "Waktu pembayaran telah habis." });
+    }
+    return () => clearInterval(interval);
+  }, [isCheckoutOpen, checkoutData.method, isProcessing, vaTimer, addNotification]);
+
+  // Filter products based on search and category
+  const filteredProducts = products.filter(product => {
+    const matchesCategory = selectedCategory === "Semua" || product.name.includes(selectedCategory);
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.store.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   // Calculate total cart items badge
   const cartItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -50,21 +82,41 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
+  const startCheckout = (method: string, amount: number, isDirect: boolean, directProduct?: any) => {
+    setCheckoutData({ method, amount, isDirect, directProduct });
+    setVaTimer(180);
+    setVaNumber(Math.floor(100000000000 + Math.random() * 900000000000).toString());
+    setIsCheckoutOpen(true);
+    if (isCartOpen) toggleCart();
+    if (isModalOpen) setIsModalOpen(false);
+  };
+
   const handleBuyNow = () => {
     if (selectedProduct) {
-      // Simulate quick checkout
       const total = selectedProduct.price * modalQuantity;
       const zakat = isZakatEnabled ? total * 0.025 : 0;
-      alert(`Beli Langsung Berhasil!\nTotal: $${(total + zakat).toFixed(2)}${isZakatEnabled ? ` (Termasuk Sadaqah $${zakat.toFixed(2)})` : ''}`);
-      setIsModalOpen(false);
+      startCheckout(paymentMethod, total + zakat, true, { ...selectedProduct, quantity: modalQuantity });
     }
   };
 
   const handleCheckout = () => {
     const { total } = getTotals();
-    alert(`Pesanan Berhasil Dibuat!\nTotal Pembayaran: $${total.toFixed(2)}\nMetode Pembayaran: ${paymentMethod.toUpperCase()}`);
-    clearCart();
-    toggleCart();
+    startCheckout(paymentMethod, total, false);
+  };
+
+  const handlePaymentSuccess = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      setIsProcessing(false);
+      setIsCheckoutOpen(false);
+      addNotification({
+        title: "Pembayaran Berhasil!",
+        message: `Pesanan Anda senilai $${checkoutData.amount.toFixed(2)} sedang diproses. Lacak resi di menu pesanan.`
+      });
+      if (!checkoutData.isDirect) {
+        clearCart();
+      }
+    }, 1500);
   };
 
   return (
@@ -86,12 +138,47 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           <div className="flex-1 max-w-2xl relative">
             <input 
               type="text" 
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(e.target.value.length > 0);
+              }}
+              onFocus={() => { if(searchQuery.length > 0) setShowSuggestions(true); }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               placeholder="Cari art toys, koleksi, atau kreator..." 
               className="w-full pl-4 pr-10 py-2.5 bg-white border-2 border-gray-100 rounded-xl outline-none focus:border-[#FF0000] transition-colors text-sm font-medium"
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#FF0000] p-1.5 rounded-lg text-white">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#FF0000] p-1.5 rounded-lg text-white pointer-events-none">
               <Search size={16} strokeWidth={3} />
             </div>
+
+            {/* Auto-complete dropdown */}
+            {showSuggestions && (
+              <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                {products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0,4).map(p => (
+                  <div 
+                    key={p.id}
+                    onClick={() => {
+                      setSearchQuery(p.name);
+                      setShowSuggestions(false);
+                      setSelectedCategory("Semua");
+                    }}
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Search size={14} className="text-gray-400 group-hover:text-[#FF0000]" />
+                      <span className="text-sm font-bold text-[#222222]">{p.name}</span>
+                    </div>
+                    <Badge className="bg-gray-100 text-gray-500 hover:bg-gray-200 shadow-none font-bold uppercase tracking-widest text-[8px]">Produk</Badge>
+                  </div>
+                ))}
+                {products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  <div className="px-4 py-6 text-center text-gray-400 text-sm font-medium">
+                    Tidak ada hasil untuk "{searchQuery}"
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Icons */}
@@ -105,9 +192,39 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <Rocket size={22} className={isAntiGravity ? 'animate-bounce' : ''} />
               </button>
 
-            <div className="relative text-gray-500 hover:text-[#FF0000] cursor-pointer transition-colors hidden sm:block">
-              <Bell size={24} />
-              <span className="absolute -top-1 -right-1 bg-[#FF0000] text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white">3</span>
+            <div className="relative hidden sm:block" onClick={() => { setShowNotifications(!showNotifications); markNotificationsAsRead(); }}>
+              <div className="text-gray-500 hover:text-[#FF0000] cursor-pointer transition-colors">
+                <Bell size={24} />
+                {notifications.filter(n => n.isUnread).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#FF0000] text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full ring-2 ring-white animate-bounce">
+                    {notifications.filter(n => n.isUnread).length}
+                  </span>
+                )}
+              </div>
+              
+              {/* Notifications Dropdown */}
+              {showNotifications && (
+                <div className="absolute top-full mt-6 right-0 w-80 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                  <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <h4 className="font-bold text-[#222222]">Notifikasi</h4>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto cursor-default">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-gray-500 text-sm">Belum ada notifikasi</div>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${n.isUnread ? 'bg-red-50/10' : ''}`}>
+                          <div className="flex justify-between items-start mb-1">
+                            <h5 className="font-bold text-sm text-[#222222] line-clamp-1">{n.title}</h5>
+                            <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap ml-2">{n.time}</span>
+                          </div>
+                          <p className="text-xs text-gray-600 line-clamp-2 mt-1">{n.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="relative text-gray-500 hover:text-[#FF0000] cursor-pointer transition-colors" onClick={toggleCart}>
               <ShoppingCart size={24} />
@@ -129,61 +246,91 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       </nav>
 
       {/* Main Content Grid */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8 flex gap-8">
         
-        {/* Banner Section */}
-        <div className={`w-full bg-[#222222] rounded-3xl p-8 mb-8 text-white relative overflow-hidden flex items-center shadow-xl transition-transform duration-1000 ${isAntiGravity ? 'rotate-y-12 translate-z-[-20px] scale-95 origin-left' : ''}`}>
-           <div className="absolute top-0 right-0 w-96 h-96 bg-[#FF0000] rounded-full blur-3xl opacity-30 transform translate-x-1/2 -translate-y-1/2"></div>
-           <div className="z-10 max-w-lg">
-             <Badge className="bg-[#A0D585] text-[#222222] hover:bg-[#A0D585] font-black uppercase tracking-widest text-[10px] px-2 py-1 mb-4 rounded-md">Exclusive Release</Badge>
-             <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">MEGA SPACE MOLLY<br/>1000% Patrick Star</h2>
-             <p className="text-gray-300 font-medium mb-6">Nikmati pengalaman belanja art toys tercepat dengan fitur 3D Anti-Gravity eksklusif.</p>
-             <Button className="bg-[#FF0000] text-white font-black uppercase tracking-tighter hover:bg-white hover:text-[#FF0000] transition-colors px-8 py-6 rounded-2xl text-lg shadow-lg shadow-[#FF0000]/30 transform active:scale-95">
-               Beli Sekarang
-             </Button>
-           </div>
-           <div className="hidden md:block absolute right-10 bottom-0 text-[12rem] leading-none opacity-20 filter drop-shadow-2xl translate-y-8">🌟</div>
-        </div>
+        {/* Left Sidebar - Categories */}
+        <aside className="w-64 hidden lg:block shrink-0">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 sticky top-24">
+            <h3 className="font-black text-[#222222] uppercase tracking-tighter italic mb-4">Kategori</h3>
+            <div className="space-y-2">
+              {["Semua", "MEGA SPACE MOLLY", "DIMOO", "Hirono", "SKULLPANDA"].map(cat => (
+                <button 
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`w-full text-left px-4 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors ${selectedCategory === cat ? 'bg-[#FF0000] text-white' : 'hover:bg-gray-50 text-gray-500'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex-1 min-w-0">
+          {/* Banner Section */}
+          <div className={`w-full bg-[#222222] rounded-3xl p-8 mb-8 text-white relative overflow-hidden flex items-center shadow-xl transition-transform duration-1000 ${isAntiGravity ? 'rotate-y-12 translate-z-[-20px] scale-95 origin-left' : ''}`}>
+             <div className="absolute top-0 right-0 w-96 h-96 bg-[#FF0000] rounded-full blur-3xl opacity-30 transform translate-x-1/2 -translate-y-1/2"></div>
+             <div className="z-10 max-w-lg">
+               <Badge className="bg-[#A0D585] text-[#222222] hover:bg-[#A0D585] font-black uppercase tracking-widest text-[10px] px-2 py-1 mb-4 rounded-md">Exclusive Release</Badge>
+               <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">MEGA SPACE MOLLY<br/>1000% Patrick Star</h2>
+               <p className="text-gray-300 font-medium mb-6">Nikmati pengalaman belanja art toys tercepat dengan fitur 3D Anti-Gravity eksklusif.</p>
+               <Button className="bg-[#FF0000] text-white font-black uppercase tracking-tighter hover:bg-white hover:text-[#FF0000] transition-colors px-8 py-6 rounded-2xl text-lg shadow-lg shadow-[#FF0000]/30 transform active:scale-95">
+                 Beli Sekarang
+               </Button>
+             </div>
+             <div className="hidden md:block absolute right-10 bottom-0 text-[12rem] leading-none opacity-20 filter drop-shadow-2xl translate-y-8">🌟</div>
+          </div>
 
         {/* Product Grid */}
-        <h3 className="text-2xl font-black text-[#222222] uppercase tracking-tighter italic mb-6">Spesial Untukmu</h3>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-2xl font-black text-[#222222] uppercase tracking-tighter italic">Spesial Untukmu</h3>
+          {searchQuery && <Badge className="bg-gray-100 text-[#222222] hover:bg-gray-200">Menampilkan hasil: "{searchQuery}"</Badge>}
+        </div>
         
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pb-20">
-          {products.map((product, index) => (
-            <div 
-              key={product.id}
-              onClick={() => openProductModal(product)}
-              className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group
-                ${isAntiGravity ? 'animate-float opacity-90' : ''}`}
-              style={isAntiGravity ? { animationDelay: `${index * 0.2}s`, animationDuration: `${3 + (index % 3)}s` } : {}}
-            >
-              {/* Product Image Area */}
-              <div className="h-48 bg-gray-50 flex items-center justify-center text-7xl relative overflow-hidden">
-                <div className="absolute inset-0 bg-[#222222] opacity-0 group-hover:opacity-5 transition-opacity"></div>
-                <span className="transform group-hover:scale-110 transition-transform duration-500">{product.image}</span>
-              </div>
-              
-              {/* Product Info */}
-              <div className="p-4">
-                <h4 className="font-bold text-sm text-[#222222] line-clamp-2 leading-tight mb-2 group-hover:text-[#FF0000] transition-colors">{product.name}</h4>
-                <div className="text-lg font-black text-[#222222] mb-3">${product.price.toFixed(2)}</div>
-                
-                <div className="flex items-center text-gray-500 mb-2">
-                  <MapPin size={12} className="mr-1 text-[#A0D585]" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">{product.store}</span>
+        {filteredProducts.length === 0 ? (
+          <div className="text-center py-20 text-gray-500">
+            <Search size={48} className="mx-auto mb-4 opacity-20" />
+            <p className="font-bold">Tidak ada produk yang sesuai dengan filter Anda.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
+            {filteredProducts.map((product, index) => (
+              <div 
+                key={product.id}
+                onClick={() => openProductModal(product)}
+                className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group
+                  ${isAntiGravity ? 'animate-float opacity-90' : ''}`}
+                style={isAntiGravity ? { animationDelay: `${index * 0.2}s`, animationDuration: `${3 + (index % 3)}s` } : {}}
+              >
+                {/* Product Image Area */}
+                <div className="h-48 bg-gray-50 flex items-center justify-center text-7xl relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[#222222] opacity-0 group-hover:opacity-5 transition-opacity"></div>
+                  <span className="transform group-hover:scale-110 transition-transform duration-500">{product.image}</span>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center text-[#222222]">
-                    <Star size={12} fill="#FF0000" className="text-[#FF0000] mr-1" />
-                    <span className="text-xs font-bold">{product.rating}</span>
+                {/* Product Info */}
+                <div className="p-4">
+                  <h4 className="font-bold text-sm text-[#222222] line-clamp-2 leading-tight mb-2 group-hover:text-[#FF0000] transition-colors">{product.name}</h4>
+                  <div className="text-lg font-black text-[#222222] mb-3">${product.price.toFixed(2)}</div>
+                  
+                  <div className="flex items-center text-gray-500 mb-2">
+                    <MapPin size={12} className="mr-1 text-[#A0D585]" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{product.store}</span>
                   </div>
-                  <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
-                  <div className="text-[10px] font-bold text-gray-400">Terjual {product.sold > 1000 ? `${(product.sold/1000).toFixed(1)}rb+` : product.sold}</div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center text-[#222222]">
+                      <Star size={12} fill="#FF0000" className="text-[#FF0000] mr-1" />
+                      <span className="text-xs font-bold">{product.rating}</span>
+                    </div>
+                    <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+                    <div className="text-[10px] font-bold text-gray-400">Terjual {product.sold > 1000 ? `${(product.sold/1000).toFixed(1)}rb+` : product.sold}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
         </div>
       </main>
 
@@ -408,6 +555,113 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         </>
       )}
 
+      {/* Checkout Processing Modal */}
+      <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
+        <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden bg-white border-none rounded-3xl shadow-2xl">
+          <div className="p-6 bg-[#222222] text-white text-center">
+            <h2 className="text-xl font-black italic uppercase tracking-tighter">Selesaikan Pembayaran</h2>
+            <p className="text-gray-400 text-xs font-medium mt-1">Selesaikan dalam waktu yang ditentukan</p>
+          </div>
+          
+          <div className="p-6 bg-gray-50">
+            {checkoutData.method === 'qris' && (
+              <div className="text-center space-y-4">
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 inline-block w-48 h-48 mx-auto shadow-sm relative overflow-hidden flex items-center justify-center group">
+                  <div className="w-40 h-40 bg-gray-100/50 rounded flex items-center justify-center filter blur-[1px]">
+                     <QrCode size={100} className="text-[#222222]" />
+                  </div>
+                  {/* Scanner line anim */}
+                  <div className="absolute top-0 left-0 w-full h-1 bg-[#FF0000] shadow-[0_0_10px_#FF0000] animate-[scan_2s_ease-in-out_infinite]"></div>
+                </div>
+                <div className="text-[#222222]">
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Total Tagihan</p>
+                  <p className="text-3xl font-black text-[#FF0000]">${checkoutData.amount.toFixed(2)}</p>
+                </div>
+                <p className="text-xs text-gray-500">Buka aplikasi e-wallet Anda (GoPay, OVO, Dana, dll) lalu scan kode QR di atas.</p>
+              </div>
+            )}
+
+            {checkoutData.method === 'transfer' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center p-4 bg-white rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} className="text-[#FF0000]" />
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Sisa Waktu</span>
+                  </div>
+                  <span className="text-lg font-black text-[#FF0000]">{Math.floor(vaTimer / 60)}:{String(vaTimer % 60).padStart(2, '0')}</span>
+                </div>
+                
+                <div className="p-4 bg-white rounded-xl border border-gray-100 space-y-4">
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-2">Pilih Bank</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {["BCA", "Mandiri", "BRI", "BSI"].map(bank => (
+                        <button 
+                          key={bank}
+                          onClick={() => setSelectedBank(bank)}
+                          className={`py-2 text-xs font-bold rounded-lg transition-colors border-2 ${selectedBank === bank ? 'border-[#FF0000] text-[#FF0000] bg-red-50' : 'border-gray-100 text-gray-500 hover:border-gray-200'}`}
+                        >
+                          {bank}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Nomor Virtual Account</p>
+                    <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <span className="font-medium text-[#222222] tracking-wider text-xl">{vaNumber}</span>
+                      <Button variant="ghost" size="sm" className="text-[#FF0000] font-bold h-7 px-2" onClick={() => alert("Nomor VA disalin!")}>Salin</Button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Total Penagihan</p>
+                    <p className="text-2xl font-black text-[#222222]">${checkoutData.amount.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {checkoutData.method === 'cod' && (
+              <div className="text-center space-y-4 p-4 border border-[#FF0000]/20 bg-[#FF0000]/5 rounded-2xl">
+                <Truck size={48} className="mx-auto text-[#FF0000] mb-2 drop-shadow-sm" />
+                <div>
+                  <h3 className="text-lg font-black text-[#222222] uppercase tracking-tighter italic">Cash On Delivery</h3>
+                  <p className="text-sm text-gray-600 mt-2">Pastikan Anda ada di lokasi saat kurir tiba. Pembayaran sebesar <span className="font-bold text-[#FF0000]">${checkoutData.amount.toFixed(2)}</span> akan ditagihkan langsung.</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg text-left shadow-sm border border-gray-100 text-xs">
+                  <span className="font-bold text-[#222222] block mb-1">Alamat Pengiriman (Refat Mukmin)</span>
+                  <span className="text-gray-500">Jl. Jend. Sudirman Kav. 52-53, Jakarta Selatan</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="p-6 bg-white border-t border-gray-100 shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
+            <Button 
+              onClick={handlePaymentSuccess}
+              disabled={isProcessing}
+              className="w-full bg-[#222222] text-white py-6 rounded-2xl font-black uppercase tracking-tighter hover:bg-[#FF0000] transition-colors shadow-xl text-md flex items-center justify-center"
+            >
+              {isProcessing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-3"></div>
+                  Memproses...
+                </>
+              ) : checkoutData.method === 'cod' ? (
+                <>
+                  <CheckCircle2 className="mr-2" /> Konfirmasi Pesanan COD
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2" /> Simulasikan Berhasil
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
